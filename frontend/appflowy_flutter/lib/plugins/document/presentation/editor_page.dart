@@ -5,6 +5,7 @@ import 'package:appflowy/plugins/document/presentation/editor_plugins/background
 import 'package:appflowy/plugins/document/presentation/editor_plugins/base/page_reference_commands.dart';
 import 'package:appflowy/plugins/document/presentation/editor_plugins/i18n/editor_i18n.dart';
 import 'package:appflowy/plugins/document/presentation/editor_plugins/mention/slash_menu_items.dart';
+import 'package:appflowy/plugins/document/presentation/editor_plugins/overview/overview_block_component.dart';
 import 'package:appflowy/plugins/document/presentation/editor_plugins/plugins.dart';
 import 'package:appflowy/plugins/document/presentation/editor_style.dart';
 import 'package:appflowy/plugins/inline_actions/handlers/date_reference.dart';
@@ -374,6 +375,7 @@ class _AppFlowyEditorPageState extends State<AppFlowyEditorPage> {
       referencedDocumentMenuItem,
       calloutItem,
       outlineItem,
+      overviewItem,
       mathEquationItem,
       codeBlockItem,
       toggleListBlockItem,

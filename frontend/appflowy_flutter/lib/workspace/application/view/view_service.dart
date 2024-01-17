@@ -228,7 +228,7 @@ class ViewBackendService {
     });
   }
 
-  Future<List<ViewPB>> getAllViews(ViewPB view) async {
+  static Future<List<ViewPB>> getAllViews(ViewPB view) async {
     final result = <ViewPB>[];
     final childViews = await getChildViews(viewId: view.id).then(
       (value) => value.getLeftOrNull<List<ViewPB>>()?.toList(),
