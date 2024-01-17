@@ -18,6 +18,7 @@ pub fn init(folder: Weak<FolderManager>) -> AFPlugin {
     .event(FolderEvent::CreateView, create_view_handler)
     .event(FolderEvent::CreateOrphanView, create_orphan_view_handler)
     .event(FolderEvent::GetView, read_view_handler)
+    .event(FolderEvent::GetAllLevelOfViews, read_all_level_of_views_handler)
     .event(FolderEvent::UpdateView, update_view_handler)
     .event(FolderEvent::DeleteView, delete_view_handler)
     .event(FolderEvent::DuplicateView, duplicate_view_handler)
@@ -152,4 +153,8 @@ pub enum FolderEvent {
   // used for add or remove recent views, like history
   #[event(input = "UpdateRecentViewPayloadPB")]
   UpdateRecentViews = 37,
+
+  /// Return the view info and all level of child views belonging to it
+  #[event(input = "ViewIdPB", output = "ViewPB")]
+  GetAllLevelOfViews = 38,
 }

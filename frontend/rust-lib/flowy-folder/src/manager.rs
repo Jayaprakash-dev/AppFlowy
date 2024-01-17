@@ -466,6 +466,83 @@ impl FolderManager {
     }
   }
 
+  /// Returns the view with the given view id, and all level of child views belonging to it.
+  #[tracing::instrument(level = "debug", skip(self, view_id), err)]
+  pub async fn get_all_level_of_views_pb(&self, view_id: &str) -> FlowyResult<ViewPB> {
+    let view_id = view_id.to_string();
+    let folder = self.mutex_folder.lock();
+    let folder = folder.as_ref().ok_or_else(folder_not_init_error)?;
+    let trash_ids = folder
+      .get_all_trash()
+      .into_iter()
+      .map(|trash| trash.id)
+      .collect::<Vec<String>>();
+
+    if trash_ids.contains(&view_id) {
+      return Err(FlowyError::record_not_found());
+    }
+
+    let root_view = folder.views.get_view(&view_id);
+    if let None = root_view {
+      return Err(FlowyError::record_not_found());
+    }
+
+    let root_view = root_view.unwrap();
+    let first_level_child_views = folder
+      .views
+      .get_views_belong_to(&root_view.id)
+      .into_iter()
+      .filter(|view| !trash_ids.contains(&view.id))
+      .collect::<Vec<_>>();
+
+    let mut view_pb = view_pb_without_child_views(root_view);
+
+    for child in &first_level_child_views {
+      let child_view = self.get_child_views_recursive(&child.id, &folder, &trash_ids);
+      if let Ok(view) = child_view {
+        view_pb.child_views.push(view);
+      } else {
+        return Err(FlowyError::record_not_found());
+      }
+    }
+
+    Ok(view_pb)
+  }
+
+  #[tracing::instrument(level = "debug", skip(self, view_id, folder, trash_ids), err)]
+  fn get_child_views_recursive(
+    &self,
+    view_id: &str,
+    folder: &Folder,
+    trash_ids: &Vec<String>,
+  ) -> FlowyResult<ViewPB> {
+    let root_view = folder.views.get_view(&view_id);
+    if let None = root_view {
+      return Err(FlowyError::record_not_found());
+    }
+
+    let root_view = root_view.unwrap();
+    let first_level_child_views = folder
+      .views
+      .get_views_belong_to(&root_view.id)
+      .into_iter()
+      .filter(|view| !trash_ids.contains(&view.id))
+      .collect::<Vec<_>>();
+
+    let mut view_pb = view_pb_without_child_views(root_view);
+
+    for child in &first_level_child_views {
+      let child_view = self.get_child_views_recursive(&child.id, &folder, &trash_ids);
+      if let Ok(view) = child_view {
+        view_pb.child_views.push(view);
+      } else {
+        return Err(FlowyError::record_not_found());
+      }
+    }
+
+    Ok(view_pb)
+  }
+
   /// Move the view to trash. If the view is the current view, then set the current view to empty.
   /// When the view is moved to trash, all the child views will be moved to trash as well.
   /// All the favorite views being trashed will be unfavorited first to remove it from favorites list as well. The process of unfavoriting concerned view is handled by `unfavorite_view_and_decendants()`

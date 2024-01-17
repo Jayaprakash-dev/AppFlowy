@@ -112,6 +112,16 @@ pub(crate) async fn read_view_handler(
   data_result_ok(view_pb)
 }
 
+pub(crate) async fn read_all_level_of_views_handler(
+  data: AFPluginData<ViewIdPB>,
+  folder: AFPluginState<Weak<FolderManager>>,
+) -> DataResult<ViewPB, FlowyError> {
+  let folder = upgrade_folder(folder)?;
+  let view_id: ViewIdPB = data.into_inner();
+  let view_pb = folder.get_all_level_of_views_pb(&view_id.value).await?;
+  data_result_ok(view_pb)
+}
+
 #[tracing::instrument(level = "debug", skip(data, folder), err)]
 pub(crate) async fn update_view_handler(
   data: AFPluginData<UpdateViewPayloadPB>,
