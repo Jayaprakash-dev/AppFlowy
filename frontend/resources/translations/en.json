@@ -674,7 +674,8 @@
     },
     "selectionMenu": {
       "outline": "Outline",
-      "codeBlock": "Code Block"
+      "codeBlock": "Code Block",
+      "overview": "Overview"
     },
     "plugins": {
       "referencedBoard": "Referenced Board",
