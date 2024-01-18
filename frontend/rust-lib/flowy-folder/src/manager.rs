@@ -49,6 +49,7 @@ pub struct FolderManager {
   pub(crate) user: Arc<dyn FolderUser>,
   pub(crate) operation_handlers: FolderOperationHandlers,
   pub cloud_service: Arc<dyn FolderCloudService>,
+  pub(crate) workspace_overview_id_manager: Arc<WorkspaceOverviewListenerIdManager>,
 }
 
 impl FolderManager {
@@ -59,6 +60,7 @@ impl FolderManager {
     cloud_service: Arc<dyn FolderCloudService>,
   ) -> FlowyResult<Self> {
     let mutex_folder = Arc::new(MutexFolder::default());
+    let workspace_overview_id_manager = WorkspaceOverviewListenerIdManager::new();
     let manager = Self {
       user,
       mutex_folder,
@@ -66,6 +68,7 @@ impl FolderManager {
       operation_handlers,
       cloud_service,
       workspace_id: Default::default(),
+      workspace_overview_id_manager: Arc::new(workspace_overview_id_manager),
     };
 
     Ok(manager)
@@ -547,7 +550,12 @@ impl FolderManager {
   /// When the view is moved to trash, all the child views will be moved to trash as well.
   /// All the favorite views being trashed will be unfavorited first to remove it from favorites list as well. The process of unfavoriting concerned view is handled by `unfavorite_view_and_decendants()`
   #[tracing::instrument(level = "debug", skip(self), err)]
-  pub async fn move_view_to_trash(&self, view_id: &str) -> FlowyResult<()> {
+  pub async fn move_view_to_trash(
+    &self,
+    view_id: &str,
+    workspace_overview_listener_id_manager: &Weak<WorkspaceOverviewListenerIdManager>,
+    weak_mutex_folder: &Weak<MutexFolder>,
+  ) -> FlowyResult<()> {
     self.with_folder(
       || (),
       |folder| {
@@ -562,10 +570,18 @@ impl FolderManager {
             })
             .send();
 
-          notify_child_views_changed(
-            view_pb_without_child_views(view),
-            ChildViewChangeReason::Delete,
-          );
+          let mutex_folder = weak_mutex_folder.clone();
+          let mutex_folder = mutex_folder.upgrade();
+          if let Some(folder) = mutex_folder {
+            if let Some(manager) = workspace_overview_listener_id_manager.upgrade() {
+              notify_child_views_changed(
+                view_pb_without_child_views(view),
+                ChildViewChangeReason::Create,
+                manager,
+                folder.clone(),
+              );
+            }
+          }
         }
       },
     );
@@ -1107,6 +1123,12 @@ impl FolderManager {
       views
     })
   }
+
+  pub fn register_overview_listerner_id(&self, view_id: &str) -> Result<(), FlowyError> {
+    self
+      .workspace_overview_id_manager
+      .add_listerner_view_id(view_id)
+  }
 }
 
 /// Return the views that belong to the workspace. The views are filtered by the trash.
@@ -1161,6 +1183,33 @@ impl Display for FolderInitDataSource {
       FolderInitDataSource::LocalDisk { .. } => f.write_fmt(format_args!("LocalDisk")),
       FolderInitDataSource::Cloud(_) => f.write_fmt(format_args!("Cloud")),
       FolderInitDataSource::FolderData(_) => f.write_fmt(format_args!("Custom FolderData")),
+    }
+  }
+}
+
+pub struct WorkspaceOverviewListenerIdManager {
+  pub(crate) view_ids: RwLock<Vec<String>>,
+}
+
+impl WorkspaceOverviewListenerIdManager {
+  pub fn new() -> WorkspaceOverviewListenerIdManager {
+    Self {
+      view_ids: RwLock::new(Vec::new()),
+    }
+  }
+
+  pub fn add_listerner_view_id(&self, view_id: &str) -> Result<(), FlowyError> {
+    let mut view_ids = self.view_ids.write();
+
+    view_ids.push(view_id.to_string().clone());
+    Ok(())
+  }
+}
+
+impl Clone for WorkspaceOverviewListenerIdManager {
+  fn clone(&self) -> Self {
+    Self {
+      view_ids: RwLock::new(self.view_ids.write().clone()),
     }
   }
 }

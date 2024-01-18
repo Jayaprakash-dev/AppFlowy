@@ -1,3 +1,4 @@
+import 'package:appflowy/plugins/document/application/overview_adapter/overview_service.dart';
 import 'package:appflowy/workspace/application/view/view_listener.dart';
 import 'package:appflowy/workspace/application/view/view_service.dart';
 import 'package:appflowy_backend/protobuf/flowy-folder/protobuf.dart';
@@ -20,6 +21,7 @@ class WorkspaceToOverviewAdapterBloc extends Bloc<
     on<WorkspaceToOverviewAdapterEvent>((event, emit) async {
       await event.map(
         initial: (e) async {
+          await OverviewAdapterBackendService.addListenerId(view.id);
           _listener.start(
             onViewUpdated: _onViewUpdated,
             onViewChildViewsUpdated: (updatedChildViews) async {
@@ -58,7 +60,7 @@ class WorkspaceToOverviewAdapterBloc extends Bloc<
     if (updatedView.createChildViews.isNotEmpty) {
       assert(updatedView.parentViewId == this.view.id);
       final view = await ViewBackendService.getAllLevelOfViews(
-        updatedView.parentViewId,
+        this.view.id,
       );
       return view.fold((l) => l, (r) => null);
     }
@@ -76,7 +78,7 @@ class WorkspaceToOverviewAdapterBloc extends Bloc<
 
     if (updatedView.updateChildViews.isNotEmpty) {
       final view = await ViewBackendService.getAllLevelOfViews(
-        updatedView.parentViewId,
+        this.view.id,
       );
       final childViews = view.fold((l) => l.childViews, (r) => <ViewPB>[]);
       if (_isRebuildRequired(childViews, updatedView.updateChildViews)) {

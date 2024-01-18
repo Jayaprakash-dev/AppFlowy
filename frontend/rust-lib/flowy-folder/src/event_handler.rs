@@ -150,8 +150,15 @@ pub(crate) async fn delete_view_handler(
 ) -> Result<(), FlowyError> {
   let folder = upgrade_folder(folder)?;
   let params: RepeatedViewIdPB = data.into_inner();
+  let weak_mutex_folder = Arc::downgrade(&folder.mutex_folder);
   for view_id in &params.items {
-    let _ = folder.move_view_to_trash(view_id).await;
+    let _ = folder
+      .move_view_to_trash(
+        view_id,
+        &Arc::downgrade(&folder.workspace_overview_id_manager),
+        &weak_mutex_folder,
+      )
+      .await;
   }
   Ok(())
 }
@@ -338,4 +345,14 @@ pub(crate) async fn get_folder_snapshots_handler(
   let data = data.into_inner();
   let snapshots = folder.get_folder_snapshots(&data.value, 10).await?;
   data_result_ok(RepeatedFolderSnapshotPB { items: snapshots })
+}
+
+#[tracing::instrument(level = "debug", skip(data, folder), err)]
+pub(crate) async fn register_overview_listerner_id_handler(
+  data: AFPluginData<ViewIdPB>,
+  folder: AFPluginState<Weak<FolderManager>>,
+) -> Result<(), FlowyError> {
+  let folder = upgrade_folder(folder)?;
+  let view_id: ViewIdPB = data.into_inner();
+  folder.register_overview_listerner_id(&view_id.value)
 }

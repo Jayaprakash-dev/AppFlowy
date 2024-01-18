@@ -16,41 +16,55 @@ use crate::entities::{
   view_pb_with_child_views, view_pb_without_child_views, ChildViewUpdatePB, FolderSnapshotStatePB,
   FolderSyncStatePB, RepeatedTrashPB, RepeatedViewPB, ViewPB,
 };
-use crate::manager::{get_workspace_view_pbs, MutexFolder};
+use crate::manager::{get_workspace_view_pbs, MutexFolder, WorkspaceOverviewListenerIdManager};
 use crate::notification::{send_notification, FolderNotification};
 
 /// Listen on the [ViewChange] after create/delete/update events happened
 pub(crate) fn subscribe_folder_view_changed(
   mut rx: ViewChangeReceiver,
   weak_mutex_folder: &Weak<MutexFolder>,
+  weak_workspace_overview_listener_id_manager: &Weak<WorkspaceOverviewListenerIdManager>,
 ) {
   let weak_mutex_folder = weak_mutex_folder.clone();
+  let workspace_overview_listener_id_manager = weak_workspace_overview_listener_id_manager.clone();
   af_spawn(async move {
     while let Ok(value) = rx.recv().await {
       if let Some(folder) = weak_mutex_folder.upgrade() {
         tracing::trace!("Did receive view change: {:?}", value);
         match value {
           ViewChange::DidCreateView { view } => {
-            notify_child_views_changed(
-              view_pb_without_child_views(Arc::new(view.clone())),
-              ChildViewChangeReason::Create,
-            );
+            if let Some(manager) = workspace_overview_listener_id_manager.upgrade() {
+              notify_child_views_changed(
+                view_pb_without_child_views(Arc::new(view.clone())),
+                ChildViewChangeReason::Create,
+                manager,
+                folder.clone(),
+              );
+            }
             notify_parent_view_did_change(folder.clone(), vec![view.parent_view_id]);
           },
           ViewChange::DidDeleteView { views } => {
             for view in views {
-              notify_child_views_changed(
-                view_pb_without_child_views(view),
-                ChildViewChangeReason::Delete,
-              );
+              if let Some(manager) = workspace_overview_listener_id_manager.upgrade() {
+                notify_child_views_changed(
+                  view_pb_without_child_views(view),
+                  ChildViewChangeReason::Delete,
+                  manager,
+                  folder.clone(),
+                );
+              }
             }
           },
           ViewChange::DidUpdate { view } => {
             notify_view_did_change(view.clone());
-            notify_child_views_changed(
-              view_pb_without_child_views(Arc::new(view.clone())),
-              ChildViewChangeReason::Update,
-            );
+            if let Some(manager) = workspace_overview_listener_id_manager.upgrade() {
+              notify_child_views_changed(
+                view_pb_without_child_views(Arc::new(view.clone())),
+                ChildViewChangeReason::Update,
+                manager,
+                folder.clone(),
+              );
+            }
             notify_parent_view_did_change(folder.clone(), vec![view.parent_view_id.clone()]);
           },
         };
@@ -205,7 +219,12 @@ pub enum ChildViewChangeReason {
 
 /// Notify the the list of parent view ids that its child views were changed.
 #[tracing::instrument(level = "debug", skip_all)]
-pub(crate) fn notify_child_views_changed(view_pb: ViewPB, reason: ChildViewChangeReason) {
+pub(crate) fn notify_child_views_changed(
+  view_pb: ViewPB,
+  reason: ChildViewChangeReason,
+  workspace_overview_listener_id_manager: Arc<WorkspaceOverviewListenerIdManager>,
+  folder: Arc<MutexFolder>,
+) -> Option<()> {
   let parent_view_id = view_pb.parent_view_id.clone();
   let mut payload = ChildViewUpdatePB {
     parent_view_id: view_pb.parent_view_id.clone(),
@@ -214,17 +233,66 @@ pub(crate) fn notify_child_views_changed(view_pb: ViewPB, reason: ChildViewChang
 
   match reason {
     ChildViewChangeReason::Create => {
-      payload.create_child_views.push(view_pb);
+      payload.create_child_views.push(view_pb.clone());
     },
     ChildViewChangeReason::Delete => {
-      payload.delete_child_views.push(view_pb.id);
+      payload.delete_child_views.push(view_pb.id.clone());
     },
     ChildViewChangeReason::Update => {
-      payload.update_child_views.push(view_pb);
+      payload.update_child_views.push(view_pb.clone());
     },
   }
 
   send_notification(&parent_view_id, FolderNotification::DidUpdateChildViews)
     .payload(payload)
     .send();
+
+  let workspace_overview_listener_id_manager = workspace_overview_listener_id_manager.clone();
+  let folder = folder.lock();
+  let folder = folder.as_ref()?;
+  //let workspace_id = folder.get_workspace_id();
+  if let Some(id) = is_overview_listener_contains_child_view_id(
+    &view_pb,
+    &workspace_overview_listener_id_manager.view_ids.write()[..],
+    folder,
+  ) {
+    let mut payload = ChildViewUpdatePB {
+      parent_view_id: id.clone(),
+      ..Default::default()
+    };
+
+    match reason {
+      ChildViewChangeReason::Create => {
+        payload.create_child_views.push(view_pb.clone());
+      },
+      ChildViewChangeReason::Delete => {
+        payload.delete_child_views.push(view_pb.id.clone());
+      },
+      ChildViewChangeReason::Update => {
+        payload.update_child_views.push(view_pb.clone());
+      },
+    }
+
+    send_notification(&id, FolderNotification::DidUpdateChildViews)
+      .payload(payload)
+      .send();
+  }
+
+  Some(())
+}
+
+pub fn is_overview_listener_contains_child_view_id(
+  view_pb: &ViewPB,
+  view_ids: &[String],
+  folder: &Folder,
+) -> Option<String> {
+  if view_ids.contains(&view_pb.parent_view_id) {
+    return Some(view_pb.parent_view_id.clone());
+  } else if &view_pb.parent_view_id == &folder.get_workspace_id() {
+    return None;
+  }
+
+  let view = folder.views.get_view(&view_pb.parent_view_id)?;
+  let view_pb = view_pb_without_child_views(view);
+  is_overview_listener_contains_child_view_id(&view_pb, view_ids, folder)
 }

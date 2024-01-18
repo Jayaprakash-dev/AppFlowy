@@ -4,6 +4,7 @@ use strum_macros::Display;
 
 use flowy_derive::{Flowy_Event, ProtoBuf_Enum};
 use lib_dispatch::prelude::*;
+use tracing::event;
 
 use crate::event_handler::*;
 use crate::manager::FolderManager;
@@ -38,6 +39,7 @@ pub fn init(folder: Weak<FolderManager>) -> AFPlugin {
     .event(FolderEvent::ReadRecentViews, read_recent_views_handler)
     .event(FolderEvent::ToggleFavorite, toggle_favorites_handler)
     .event(FolderEvent::UpdateRecentViews, update_recent_views_handler)
+    .event(FolderEvent::RegisterOverviewListenerId, register_overview_listerner_id_handler)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Display, Hash, ProtoBuf_Enum, Flowy_Event)]
@@ -157,4 +159,10 @@ pub enum FolderEvent {
   /// Return the view info and all level of child views belonging to it
   #[event(input = "ViewIdPB", output = "ViewPB")]
   GetAllLevelOfViews = 38,
+
+  /// registers overview block listener ID,
+  /// by that we can get all `DidUpdateChildViews` notification
+  /// from all level of child views to our desired parent view listener
+  #[event(input = "ViewIdPB")]
+  RegisterOverviewListenerId = 39,
 }
