@@ -1,6 +1,6 @@
 import 'package:appflowy/generated/locale_keys.g.dart';
 import 'package:appflowy/plugins/base/emoji/emoji_text.dart';
-import 'package:appflowy/plugins/document/application/workspace_to_overview_adapter_bloc.dart';
+import 'package:appflowy/plugins/document/application/overview_adapter/workspace_to_overview_adapter_bloc.dart';
 import 'package:appflowy/plugins/document/presentation/editor_plugins/actions/mobile_block_action_buttons.dart';
 import 'package:appflowy/workspace/application/view/view_ext.dart';
 import 'package:appflowy/workspace/application/view/view_service.dart';
@@ -88,44 +88,29 @@ class _OverviewBlockWidgetState extends State<OverviewBlockWidget>
   @override
   Node get node => widget.node;
 
-  final double leftIndentIncrementValue = 22.0;
+  final double leftIndentIncrementValue = 20.0;
 
   @override
   Widget build(BuildContext context) {
     final viewId = editorState.document.id!;
     return FutureBuilder<Either<ViewPB, FlowyError>>(
-      future: ViewBackendService.getView(viewId),
+      future: ViewBackendService.getAllLevelOfViews(viewId),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.done &&
             snapshot.hasData &&
             snapshot.data != null) {
-          final rootView = snapshot.data!.getLeftOrNull<ViewPB>();
-
-          if (rootView == null) {
-            return const SizedBox.shrink();
-          }
-
-          return FutureBuilder<List<ViewPB>>(
-            future: ViewBackendService.getAllViews(rootView),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.done &&
-                  snapshot.hasData &&
-                  snapshot.data != null) {
-                return BlocProvider<WorkspaceToOverviewAdapterBloc>(
-                  create: (context) =>
-                      WorkspaceToOverviewAdapterBloc(viewId: viewId),
-                  child: BlocBuilder<WorkspaceToOverviewAdapterBloc,
-                      WorkspaceToOverviewAdapterState>(
-                    builder: (context, state) {
-                      print(snapshot.data!);
-                      return _buildOverviewBlock(rootView);
-                    },
-                  ),
+          final view = snapshot.data!.getLeftOrNull();
+          return BlocProvider<WorkspaceToOverviewAdapterBloc>(
+            create: (context) => WorkspaceToOverviewAdapterBloc(view: view)
+              ..add(const WorkspaceToOverviewAdapterEvent.initial()),
+            child: BlocBuilder<WorkspaceToOverviewAdapterBloc,
+                WorkspaceToOverviewAdapterState>(
+              builder: (context, state) {
+                return _buildOverviewBlock(
+                  state.view,
                 );
-              }
-
-              return const SizedBox.shrink();
-            },
+              },
+            ),
           );
         }
 
@@ -200,8 +185,6 @@ class _OverviewBlockWidgetState extends State<OverviewBlockWidget>
         leftIndent,
       ),
     );
-
-    //final childViews = ViewBackendService.getChildViews(viewId: view.id);
 
     for (final child in view.childViews) {
       children.addAll(
@@ -285,7 +268,7 @@ class OverviewItemWidget extends StatelessWidget {
                     ),
               const HSpace(8.0),
               Text(
-                icon.toString() + text,
+                text,
                 style: style.copyWith(
                   color: onHover
                       ? Theme.of(context).colorScheme.onSecondary

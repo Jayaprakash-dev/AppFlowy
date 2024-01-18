@@ -228,7 +228,7 @@ class ViewBackendService {
     });
   }
 
-  static Future<List<ViewPB>> getAllViews(ViewPB view) async {
+  Future<List<ViewPB>> getAllViews(ViewPB view) async {
     final result = <ViewPB>[];
     final childViews = await getChildViews(viewId: view.id).then(
       (value) => value.getLeftOrNull<List<ViewPB>>()?.toList(),
@@ -248,6 +248,13 @@ class ViewBackendService {
   ) async {
     final payload = ViewIdPB.create()..value = viewID;
     return FolderEventGetView(payload).send();
+  }
+
+  static Future<Either<ViewPB, FlowyError>> getAllLevelOfViews(
+    String viewID,
+  ) async {
+    final payload = ViewIdPB.create()..value = viewID;
+    return FolderEventGetAllLevelOfViews(payload).send();
   }
 
   Future<Either<ViewPB, FlowyError>> getChildView({
