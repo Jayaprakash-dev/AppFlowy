@@ -25,6 +25,7 @@ class ViewListener {
   void Function(DeleteViewNotifyValue)? _deletedNotifier;
   void Function(RestoreViewNotifiedValue)? _restoredNotifier;
   void Function(MoveToTrashNotifiedValue)? _moveToTrashNotifier;
+  void Function(ChildViewUpdatePB)? _updateWorkspaceOverviewChildViewsNotifier;
   bool _isDisposed = false;
 
   FolderNotificationParser? _parser;
@@ -40,6 +41,7 @@ class ViewListener {
     void Function(DeleteViewNotifyValue)? onViewDeleted,
     void Function(RestoreViewNotifiedValue)? onViewRestored,
     void Function(MoveToTrashNotifiedValue)? onViewMoveToTrash,
+    void Function(ChildViewUpdatePB)? onWorkspaceOverviewChildViewsUpdated,
   }) {
     if (_isDisposed) {
       Log.warn("ViewListener is already disposed");
@@ -51,6 +53,8 @@ class ViewListener {
     _restoredNotifier = onViewRestored;
     _moveToTrashNotifier = onViewMoveToTrash;
     _updateViewChildViewsNotifier = onViewChildViewsUpdated;
+    _updateWorkspaceOverviewChildViewsNotifier =
+        onWorkspaceOverviewChildViewsUpdated;
 
     _parser = FolderNotificationParser(
       id: viewId,
@@ -104,6 +108,15 @@ class ViewListener {
           (payload) => _moveToTrashNotifier
               ?.call(left(DeletedViewPB.fromBuffer(payload))),
           (error) => _moveToTrashNotifier?.call(right(error)),
+        );
+        break;
+      case FolderNotification.DidUpdateWorkspaceOverviewChildViews:
+        result.fold(
+          (payload) {
+            final pb = ChildViewUpdatePB.fromBuffer(payload);
+            _updateWorkspaceOverviewChildViewsNotifier?.call(pb);
+          },
+          (err) => Log.error(err),
         );
         break;
       default:
